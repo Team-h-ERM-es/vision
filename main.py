@@ -105,20 +105,63 @@ HTML_TEMPLATE = """
 def capture_video():
     global frame, detections
     
-    cap = cv2.VideoCapture(0)
-    
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
+    cap = None
+    camera_indices_to_try = [
+        (0, cv2.CAP_V4L2),
+        (0),
+        (1, cv2.CAP_V4L2),
+        (1),
+        (2),
+        (4)
+    ]
+
+    for index_args in camera_indices_to_try:
+        if isinstance(index_args, tuple):
+            print(f"Info: Trying to open camera with index {index_args[0]} and backend {index_args[1]}...")
+            cap = cv2.VideoCapture(*index_args)
+        else:
+            print(f"Info: Trying to open camera with index {index_args} (default backend)...")
+            cap = cv2.VideoCapture(index_args)
+        
+        if cap.isOpened():
+            print(f"Success: Opened camera with arguments: {index_args}")
+            break
+        else:
+            print(f"Info: Failed to open camera with arguments: {index_args}")
+            cap = None
+
+    if not cap or not cap.isOpened():
+        print("Error: Could not open any camera after trying multiple indices and backends.")
         return
     
+    print(f"Info: Setting frame width to 640 and height to 480.")
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    
+
+    print("Info: Warming up camera...")
+    for _ in range(10):
+        ret, _ = cap.read()
+        if ret:
+            print(f"Debug: Warm-up frame read successfully: {_}")
+        else:
+            print("Warning: Failed to read a warm-up frame.")
+        time.sleep(0.05)
+
+    print("Info: Camera warm-up complete. Starting main capture loop.")
+
     while True:
         ret, img = cap.read()
         if not ret:
-            break
+            print("Error: Failed to capture frame. 'ret' is False.")
+            time.sleep(0.1)
+            continue
+        
+        if img is None:
+            print("Error: Captured frame is None.")
+            time.sleep(0.1)
+            continue
             
+
         results = model(img)
         result = results[0]
         
@@ -158,7 +201,7 @@ def generate_frames():
     
     while True:
         if frame is None:
-            time.sleep(0.1)
+            time.sleep(0.3)
             continue
             
         with lock:
